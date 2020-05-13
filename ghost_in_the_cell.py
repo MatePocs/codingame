@@ -1,3 +1,4 @@
+
 import sys
 import math
 from enum import Enum
@@ -12,8 +13,9 @@ link_count = int(input())  # the number of links between factories
 for i in range(link_count):
     factory_1, factory_2, distance = [int(j) for j in input().split()]
     distances[(factory_1, factory_2)] = distance
-# in the distances dictionary, factory_1 < factory_2, tested it
 
+
+# in the distances dictionary, factory_1 < factory_2, tested it
 
 
 class Player(Enum):
@@ -22,8 +24,7 @@ class Player(Enum):
     NEUTRAL = 3
 
 
-
-def project_state_at_factory(factory, my_additional_troops = []):
+def project_state_at_factory(factory, my_additional_troops=[]):
     """
     for a certain facotry, projects 20 turns of my troops - enemy troops
     taking only current information into account
@@ -41,13 +42,15 @@ def project_state_at_factory(factory, my_additional_troops = []):
     my_new_troops = [0] * 21
     opponent_new_troops = [0] * 21
 
+    # production_zeroed: due to bomb
+    production_on = [True] * 21
+
     production = factory['production']
     factory_id = factory['id']
     current_cyborgs = factory['cyborgs']
 
     my_cum_production = 0
     opponent_cum_production = 0
-
 
     if factory in my_factories:
         current_owner = Player.ME
@@ -58,7 +61,7 @@ def project_state_at_factory(factory, my_additional_troops = []):
 
     projections.append((current_owner, current_cyborgs, my_cum_production, opponent_cum_production))
 
-    # get troops headed there 
+    # get troops headed there
     for troop in my_troops:
         if troop['target'] == factory_id:
             my_new_troops[troop['remaining_turns']] += troop['cyborgs']
@@ -71,9 +74,22 @@ def project_state_at_factory(factory, my_additional_troops = []):
         for troop in my_additional_troops:
             my_new_troops[troop['remaining_turns']] += troop['cyborgs']
 
+    # get bombs headed there, we only know ours
+    for bomb in my_bombs:
+        if bomb['target'] == factory_id:
+            for i in range(bomb['remaining_turns'], min(bomb['remaining_turns'] + 5,21)):
+                production_on[i] = False
+
+    # also set prouction to false if we already know that from the factory
+    if factory['not_producing_rounds'] > 0:
+        for i in range(0, factory['not_producing_rounds'] + 1):
+            production_on[i] = False
+
+
     for i in range(1, 20 + 1):
-        # first, if owner was me or opponent, add production
-        if current_owner == Player.ME or current_owner == Player.OPPONENT:
+        # first, if owner was me or opponent, add production, if there was no bomb that stopped production
+        if (current_owner == Player.ME or current_owner == Player.OPPONENT) and \
+            production_on[i]:
             current_cyborgs += production
             if current_owner == Player.ME:
                 my_cum_production += production
@@ -113,6 +129,7 @@ def project_state_at_factory(factory, my_additional_troops = []):
 
     return projections
 
+
 def calculate_cum_production_difference(factory_origin, factory_target, number_of_cyborgs, distance):
     """
     calculates an alternative scenario in which we send number_of_cyborgs from factory_origin to factory_target
@@ -123,7 +140,6 @@ def calculate_cum_production_difference(factory_origin, factory_target, number_o
 
     target_me_old_cum_production = factory_target['projection'][20][2]
     target_opponent_old_cum_production = factory_target['projection'][20][3]
-
 
     # we create a planned troop, in the same structure as regular toops
     planned_troop = {}
@@ -141,10 +157,11 @@ def calculate_cum_production_difference(factory_origin, factory_target, number_o
 
     return target_cum_production_difference
 
+
 def get_number_of_cyborgs_with_same_impact_as_all(factory_origin, factory_target, distance):
     """
     calculates the minimum number of cyborgs to be sent from origin to target
-    that would result in the same cumulative production difference 
+    that would result in the same cumulative production difference
     as sending the maximum available
 
     using a binary search
@@ -178,23 +195,23 @@ def get_number_of_cyborgs_with_same_impact_as_all(factory_origin, factory_target
 
 
 def get_factories_distance(factory_1, factory_2):
-    
     return distances[(min(factory_1['id'], factory_2['id']), max(factory_1['id'], factory_2['id']))]
+
 
 def score_of_possible_action(possible_action):
     """
     assigns a score to the possible action based on number of cyborgs, length, and difference in cum prod
     the higher the score, the better
     """
-    cyborgs = max(possible_action['cyborgs'],1)
+    cyborgs = max(possible_action['cyborgs'], 1)
     # there is some 0 number cyborg here, should be avoided
     remaining_turns = possible_action['remaining_turns']
     target_cum_prod_diff = possible_action['target_cum_prod_diff']
 
     return target_cum_prod_diff / cyborgs / remaining_turns
 
-def convert_command_to_string(commands):
 
+def convert_command_to_string(commands):
     if commands:
         command_string = commands[0]
         if len(commands) > 1:
@@ -207,11 +224,12 @@ def convert_command_to_string(commands):
 
     return command_string
 
+
 # game loop
 while True:
 
-# DATA COLLECTION
-# collecting data in every single game turn
+    # DATA COLLECTION
+    # collecting data in every single game turn
 
     entity_count = int(input())  # the number of entities (e.g. factories and troops)
 
@@ -235,11 +253,12 @@ while True:
         arg_5 = int(arg_5)
 
         if entity_type == 'FACTORY':
-        # save factories
+            # save factories
             factory = {}
             factory['id'] = entity_id
             factory['cyborgs'] = arg_2
             factory['production'] = arg_3
+            factory['not_producing_rounds'] = arg_4
             if arg_1 == 1:
                 my_factories.append(factory)
             elif arg_1 == -1:
@@ -247,8 +266,8 @@ while True:
             else:
                 neutral_factories.append(factory)
         elif entity_type == 'TROOP':
-        # save troops
-            troop = {} 
+            # save troops
+            troop = {}
             troop['id'] = entity_id
             troop['origin'] = arg_2
             troop['target'] = arg_3
@@ -259,7 +278,7 @@ while True:
             elif arg_1 == -1:
                 opponent_troops.append(troop)
         elif entity_type == 'BOMB':
-        # save bombs
+            # save bombs
             bomb = {}
             bomb['origin'] = arg_2
             bomb['target'] = arg_3
@@ -274,19 +293,19 @@ while True:
         projection = project_state_at_factory(factory)
         factory['projection'] = projection
 
-# COMMANDS        
+    # COMMANDS
 
     commands = []
 
-# STRATEGY PART 1 - MOVING TROOPS
-# for each of our factories, loop through every other factory
-# calculate the increase in cumulative production difference by round 20
-# assuming we send there all of our troops there
-# then calculate the minimum number of sent troops that would also result in
-# and finally, come up with a score: 
-# distance * troops needed / cum_prod_diff
+    # STRATEGY PART 1 - MOVING TROOPS
+    # for each of our factories, loop through every other factory
+    # calculate the increase in cumulative production difference by round 20
+    # assuming we send there all of our troops there
+    # then calculate the minimum number of sent troops that would also result in
+    # and finally, come up with a score:
+    # distance * troops needed / cum_prod_diff
 
-    # we are doing a loop on the factories, check if there was any new action, and 
+    # we are doing a loop on the factories, check if there was any new action, and
     # then repeat until there was at least one company that made an action
     # first, we set all the skipped turns to none
 
@@ -309,18 +328,18 @@ while True:
                 # loop through all possible
                 for factory in my_factories + opponent_factories + neutral_factories:
                     if factory['id'] != factory_analysed['id']:
-                        
+
                         distance = get_factories_distance(factory_analysed, factory)
 
                         required_cyborgs, max_target_cum_production_difference = \
-                        get_number_of_cyborgs_with_same_impact_as_all(factory_analysed, factory, distance)
+                            get_number_of_cyborgs_with_same_impact_as_all(factory_analysed, factory, distance)
                         # print(factory['id'], required_cyborgs, max_target_cum_production_difference, file = sys.stderr)
 
                         possible_action = {}
                         possible_action['origin'] = factory_analysed['id']
                         possible_action['target'] = factory['id']
 
-                        possible_action['remaining_turns'] = distance
+                        possible_action['remaining_turns'] = distance + 1
                         possible_action['cyborgs'] = required_cyborgs
                         possible_action['target_cum_prod_diff'] = max_target_cum_production_difference
 
@@ -330,8 +349,7 @@ while True:
                             chosen_action = possible_action
                             chosen_factory = factory
 
-
-                # if there is a chosen action, assume that we issued the order, and 
+                # if there is a chosen action, assume that we issued the order, and
                 # adjust baseline tatistics
 
                 if chosen_action is not None:
@@ -362,40 +380,49 @@ while True:
                     # create a new command
 
                     new_command = 'MOVE ' + str(chosen_action['origin']) + ' ' + \
-                        str(chosen_action['target']) + ' ' + str(chosen_action['cyborgs'])
+                                  str(chosen_action['target']) + ' ' + str(chosen_action['cyborgs'])
 
                     commands.append(new_command)
 
                 else:
-                    # if there was no action chosen, switch the 
+                    # if there was no action chosen, switch the
                     factory_analysed['new_action'] = False
 
-# STRATEGY 2
+    # STRATEGY 2
 
-    # not tracking bombs yet, but if other player has a factory with 2 or 3, 
+    # not tracking bombs yet, but if other player has a factory with 2 or 3,
     # launch a bomb from our first factory
     bomb_target = None
 
     for factory in opponent_factories:
-        if factory['production'] == 2 or factory['production'] == 3:
+        if factory['production'] == 3:
             # only if we are not already targeting that factory
             if my_bombs:
                 if my_bombs[0]['target'] != factory['id']:
-                    bomb_target = factory['id']
+                    bomb_target = factory
                     break
             else:
-                bomb_target = factory['id']
-                break 
+                bomb_target = factory
+                break
 
-    if bomb_target is not None: 
+    if bomb_target is not None:
+
+        # find my factories where distance is minimal
+        min_distance = 21
+
+        for factory in my_factories:
+            if get_factories_distance(bomb_target, factory) < min_distance:
+                bomb_origin = factory
+                min_distance = get_factories_distance(bomb_target, factory)
+
         bomb_command = \
-        'BOMB' + ' ' + str(my_factories[0]['id']) + ' ' + str(bomb_target)
+            'BOMB' + ' ' + str(bomb_origin['id']) + ' ' + str(bomb_target['id'])
 
         commands.append(bomb_command)
 
-# STRATEGY 3
+    # STRATEGY 3
 
-    # increase production whenever we can, will only send out troops from factories 
+    # increase production whenever we can, will only send out troops from factories
     # where we have 3 production
 
     increase_production = []
@@ -405,14 +432,18 @@ while True:
             increase_production.append(factory['id'])
 
     for factory_id in increase_production:
-        increase_command = 'INC '  + str(factory_id)
+        increase_command = 'INC ' + str(factory_id)
 
         commands.append(increase_command)
 
     # Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
 
-
     command_string = convert_command_to_string(commands)
 
+    for factory in opponent_factories:
+        print(factory['projection'], file = sys.stderr)
+
+    for bomb in my_bombs:
+        print(bomb['remaining_turns'], file = sys.stderr)
 
     print(command_string)
