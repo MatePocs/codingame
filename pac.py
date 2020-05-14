@@ -1,23 +1,29 @@
+"""
+TODO's:
+right now, we only keep track of distances that are 20 steps away, I think this might be OK
+agent offensive behavior: attack opponent pacs when they are visible
+keep track of the pellets, create a list at the start, and pop them as we see them
+"""
+
+
 import sys
 import math
 from enum import Enum
-
-debugging = True
-
-# Grab the pellets as fast as you can!
 
 # *************
 # INITIAL DATA STEP
 # *************
 
-map_of_arena = []
+map_of_level_by_rows = []
+
 # width: size of the grid
 # height: top left corner is (x=0, y=0)
 width, height = [int(i) for i in input().split()]
 for i in range(height):
-    row = input()  # one line of the grid: space " " is floor, pound "#" is wall
-    #map's first coordinate is y, second is x
-    map_of_arena.append(row)
+    current_row = input()  # one line of the grid: space " " is floor, pound "#" is wall
+    map_of_level_by_rows.append(current_row)
+    
+distance_to_calculate_in_setup = 10
 
 # *************
 # CLASSES
@@ -27,8 +33,12 @@ class Player(Enum):
     ME =1
     OPPONENT = 2
 
+
 class CommandType(Enum):
     MOVE = 1
+    SPEED = 2
+    SWITCH = 3
+
 
 class CoOrdinate:
     """
@@ -46,38 +56,153 @@ class MyMap:
     created from the distancecalculator object
     """
 
-    def __init__(self, map_of_arena):
+    def __init__(self, map_of_level_by_rows_input):
         """
         map_of_arena is the input we get from the game system
         a list of lists, containing '#' for wall and ' ' for floor
         """
         # this map is seldom used
-        self.map_of_arena = map_of_arena
 
-        self.populate_floor_coordinates()
+        self.populate_floor_coordinates(map_of_level_by_rows_input)
         
-    def populate_floor_coordinates(self):
+    def populate_floor_coordinates(self, map_of_level_by_rows_input):
         """
         creates dictionary, where keys are coordinate labels, values are coordinates
         """
         self.floor_coordinates = {}
 
-        for rownum, row in enumerate(self.map_of_arena):
+        for rownum, row in enumerate(map_of_level_by_rows_input):
             for columnum, item in enumerate(row):
                 if item == ' ':
                     # the item is a valid coord, add it to the dictionary
                     current_coord = CoOrdinate(x = columnum, y = rownum)
                     self.floor_coordinates[current_coord.label] = current_coord
 
+    def return_visible_coords(self, coord_label):
+        """
+        parameter: label of coordinate
+        returns list of coordinate labels that are visible from the coord label
+        """
+
+        visible_coord_labels = []
+
+        coord = self.floor_coordinates[coord_label]
+        x = coord.x
+        y = coord.y
+
+        # check upper 
+        x_to_check = x
+        y_to_check = y - 1
+        coord_to_check = CoOrdinate(x=x_to_check, y=y_to_check)
+        while coord_to_check.label in self.floor_coordinates:
+            visible_coord_labels.append(coord_to_check.label)
+            y_to_check -= 1
+            coord_to_check = CoOrdinate(x_to_check, y_to_check)
+
+        # check down 
+        x_to_check = x
+        y_to_check = y + 1
+        coord_to_check = CoOrdinate(x_to_check, y_to_check)
+        while coord_to_check.label in self.floor_coordinates:
+            visible_coord_labels.append(coord_to_check.label)
+            y_to_check += 1
+            coord_to_check = CoOrdinate(x_to_check, y_to_check)
+
+        # right
+        if x == width-1: 
+            x_to_check = 0
+        else:
+            x_to_check = x + 1
+        y_to_check = y
+        coord_to_check = CoOrdinate(x_to_check, y_to_check)
+        while coord_to_check.label in self.floor_coordinates:
+            visible_coord_labels.append(coord_to_check.label)
+            if x_to_check == width-1: 
+                x_to_check = 0
+            else:
+                x_to_check +=  1
+            coord_to_check = CoOrdinate(x_to_check, y_to_check)
+
+        # left
+        if x == 0: 
+            x_to_check = width - 1
+        else:
+            x_to_check = x - 1
+        y_to_check = y
+        coord_to_check = CoOrdinate(x_to_check, y_to_check)
+        while coord_to_check.label in self.floor_coordinates:
+            visible_coord_labels.append(coord_to_check.label)
+            if x_to_check == 0: 
+                x_to_check = width - 1
+            else:
+                x_to_check -= 1
+            coord_to_check = CoOrdinate(x_to_check, y_to_check)
+
+        return visible_coord_labels
+
+class RPS:
+    """
+    only has static functions
+    """
+    
+    @staticmethod
+    def first_beats_second(rps_1, rps_2):
+        if (rps_1 == 'ROCK' and rps_2 == 'SCISSORS') or \
+            (rps_1 == 'SCISSORS' and rps_2 == 'PAPER') or \
+            (rps_1 == 'PAPER' and rps_2 == 'ROCK'):
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def return_form_that_beats(rps):
+        if rps == 'ROCK':
+            return 'PAPER'
+        elif rps == 'PAPER':
+            return 'SCISSORS'
+        else:
+            return 'ROCK'
+            
 
 class Pac:
 
-    def __init__(self, pac_id, owner , coord, speed_turns_left, ability_cooldown):
+    def __init__(self, pac_id, owner , coord, type_id, speed_turns_left, ability_cooldown):
         self.pac_id = pac_id
         self.owner = owner
         self.coord = coord
+        self.type_id = type_id
         self.speed_turns_left = speed_turns_left
         self.ability_cooldown = ability_cooldown
+
+    def visible_opponent_pacs(self, gamestate):
+        """
+        argument is a GameState object
+        returns list of opponent pac objects
+        """
+
+        opponent_pacs = gamestate.opponent_pacs
+
+        visible_opponent_pacs_list = []
+
+        visible_coords_list = self.get_visible_coords()
+
+        for opponent_pac in opponent_pacs:
+            # check if opponent pac coordinate is in list of visible coordinates
+            if opponent_pac.coord.label in visible_coords_list:
+            # if yes, append it to the visible_opponent_pacs_list
+
+                visible_opponent_pacs_list.append(opponent_pac)
+
+        return visible_opponent_pacs_list
+
+    def get_visible_coords(self):
+        """
+        returns a list of coordinates that are visible from this point
+        """
+        visible_coords_list = distance_calculator.my_map.return_visible_coords(self.coord.label)
+
+        return visible_coords_list
+
 
 class Pellet:
 
@@ -103,12 +228,11 @@ class DistanceCalculator:
     if we need the actual coordinates, we use the dictionary to convert to 
     a coordinate object
     """
-    def __init__(self, map_of_arena):
-        self.map_of_arena = map_of_arena
+    def __init__(self, map_of_level_by_rows_input):
 
         # first step: create a map object
         # this will keep track of available floor corrdinates
-        self.my_map = MyMap(map_of_arena)
+        self.my_map = MyMap(map_of_level_by_rows_input)
 
         self.shortest_distances_between_coords = {}
         # example: shortest_distance_between_coords[('3,1','11,8'): [8, routes]]
@@ -132,7 +256,7 @@ class DistanceCalculator:
         current_minimum_distance = 99999
         
         for end_coord in list_of_end_coords:
-            current_distance = self.shortest_distances_between_coords[(start_coord, end_coord)][0]
+            current_distance = self.shortest_distances_between_coords.get((start_coord, end_coord)[0],99999)
             if current_distance < current_minimum_distance:
                 result_list = []
                 result_list.append(end_coord)
@@ -156,8 +280,9 @@ class DistanceCalculator:
         found_at_least_one_new_route = True
         distance = 0
 
-        while found_at_least_one_new_route:
-            print(distance, file = sys.stderr)
+        #while found_at_least_one_new_route:
+        while distance <= distance_to_calculate_in_setup:
+
             found_at_least_one_new_route = False
             distance += 1
             found_at_least_one_new_route = self.populate_distance_coords(distance = distance)
@@ -332,22 +457,25 @@ class DistanceCalculator:
             elif coord_to_check_distance == current_minimum_distance: 
                 result_list.append(coord_to_check)
 
-        return urrent_minimum_distance, result_list
-
+        return current_minimum_distance, result_list
 
 class Command():
 
-    def __init__(self, cmd_type, source, target):
-        self.type = cmd_type # Enum
-        self.source = source # the id of pac
-        self.target = target # a coordinate
+    def __init__(self, cmd_type, pac_id, target):
+        self.cmd_type = cmd_type # Enum
+        self.pac_id = pac_id # the id of pac
+        self.target = target # a coordinate, if cmd_type = MOVE
         self.string_command = self.convert_to_string()
 
     def convert_to_string(self):
-        if self.type == CommandType.MOVE:
+        if self.cmd_type == CommandType.MOVE:
             x = self.target.x
             y = self.target.y
-            return 'MOVE ' + str(self.source) + ' ' + str(x) + ' ' + str(y)
+            return 'MOVE ' + str(self.pac_id) + ' ' + str(x) + ' ' + str(y)
+        elif self.cmd_type == CommandType.SPEED:
+            return 'SPEED ' + str(self.pac_id)
+        elif self.cmd_type == CommandType.SWITCH:
+            return 'SWITCH ' + str(self.pac_id)  + ' ' + self.target
 
 class MultipleCommandsCombiner():
     """
@@ -368,6 +496,7 @@ class MultipleCommandsCombiner():
         result_string = result_string[:-2]
         return result_string
 
+
 class Agent():
     """
     responsible for moving pacmans, only thing is: whose
@@ -384,20 +513,66 @@ class Agent():
         command_strings = []
 
         # for now, loop through pacmans, send them to nearest pellet
-        # TODO speed up if they are not sped up
         for pac in gamestate.my_pacs:
 
-            pac_coord = pac.coord.label
-            pellet_coords = Pellet.extract_coordinates_of_pellets(gamestate.pellets)
-            target_label = distance_calculator.find_minimum_distance_coordinates(pac_coord, pellet_coords)[0][0]
-            target = distance_calculator.my_map.floor_coordinates[target_label]
+            # first, if there is an enemy pac within 2 steps, offensive
+            # this means either switching to RPS that kills it
+            # or if we are already on that mode, move towards it
+            # second, if there are no enemies in sight, and pac can speed, speed up
 
-            command = Command(cmd_type = CommandType.MOVE, source = pac.pac_id, target = target)
+            visible_opponent_pacs = pac.visible_opponent_pacs(gamestate)
+            print(pac.pac_id, visible_opponent_pacs, file = sys.stderr)
+
+            command = None
+
+            if visible_opponent_pacs:
+
+                # if there is at least one visible opponent pac, our pac attacks
+                command = self.get_offensive_command(pac, visible_opponent_pacs[0])
+
+            # if we did not receive a 
+            if command is None: 
+
+                if pac.ability_cooldown == 0:
+
+                    command = Command(cmd_type = CommandType.SPEED, pac_id = pac.pac_id, target = None)
+
+                else:
+
+                # as a third option, if we did neither of those, find nearest pellet and move towards it
+
+                    pac_coord = pac.coord.label
+                    pellet_coords = Pellet.extract_coordinates_of_pellets(gamestate.pellets)
+                    target_label = distance_calculator.find_minimum_distance_coordinates(pac_coord, pellet_coords)[1][0]
+                    target = distance_calculator.my_map.floor_coordinates[target_label]
+                    command = Command(cmd_type = CommandType.MOVE, pac_id = pac.pac_id, target = target)
 
             command_string = command.convert_to_string()
+            print(command_string, file = sys.stderr)
             command_strings.append(command_string)
 
         return command_strings
+
+    def get_offensive_command(self, my_pac, opponent_pac):
+        """
+        takes in my pac and opponent's pac that is visible
+        returns a command that either switches form, or moves to opponent's coord
+        """
+        command = None
+        if RPS.first_beats_second(my_pac.type_id, opponent_pac.type_id):
+            # if our pac beats opponent move there, speed up if we can
+            if my_pac.ability_cooldown == 0:
+                command = Command(cmd_type = CommandType.SPEED, pac_id = pac.pac_id, target = None)
+            else: 
+                target_label = opponent_pac.coord.label
+                target = distance_calculator.my_map.floor_coordinates[target_label]
+                command = Command(cmd_type = CommandType.MOVE, pac_id = my_pac.pac_id, target = target)
+        elif my_pac.ability_cooldown == 0:
+            # if not, and ability cooldown is 0, switch to the mode that beats the target
+            rps_to_switch_to = RPS.return_form_that_beats(opponent_pac.type_id)
+            command = Command(cmd_type = CommandType.SWITCH, pac_id = my_pac.pac_id, target = rps_to_switch_to)
+        return command
+
 
     def greedy_manhattan():
         """
@@ -446,8 +621,6 @@ class GameStateProjector():
         current_mypacs = current_gamestate.my_pacs
         current_opponentpacs = current_gamestate.opponent_pacs
 
-
-
         projected_gamestate = GameState()
         return projected_gamestate
 
@@ -456,13 +629,10 @@ class GameStateProjector():
 # ENVIRONMENT
 # *************
 
-
-distance_calculator = DistanceCalculator(map_of_arena)
+distance_calculator = DistanceCalculator(map_of_level_by_rows)
 agent = Agent(owner = Player.ME)
 multiple_commands_combiner = MultipleCommandsCombiner()
 gamestate_projector = GameStateProjector()
-
-print(distance_calculator.closest_coordinates[('11,10', 2)], file = sys.stderr)
 
 # *************
 # GAME LOOP STARTS
@@ -500,13 +670,15 @@ while True:
         speed_turns_left = int(speed_turns_left)
         ability_cooldown = int(ability_cooldown)
 
+        print(type_id, file = sys.stderr)
+
         if mine:
             owner = Player.ME
         else:
             owner = Player.OPPONENT
 
         coord = CoOrdinate(x, y)
-        pac = Pac(pac_id, owner , coord, speed_turns_left, ability_cooldown)
+        pac = Pac(pac_id, owner , coord, type_id, speed_turns_left, ability_cooldown)
 
         if mine:
             my_pacs.append(pac)
