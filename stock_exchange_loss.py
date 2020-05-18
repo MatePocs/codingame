@@ -40,3 +40,34 @@ Well, this worked for all cases, except for the large database, will need to adj
 # ******************
 # Optimised Solution
 # ******************
+
+import sys
+import math
+
+# basically, what's the largest difference if you subtract from left to right
+
+# ok, this will definitely not work with high n, but let's do a naive one first
+
+n = int(input())
+
+values = []
+
+for i in input().split():
+    v = int(i)
+    values.append(v)
+
+max_diff = 0
+max_price = 0
+
+# take the diff with the maximum element to the left
+# need to keep track of maximum 
+
+for i in range(len(values)):
+    current_price = values[i]
+    max_price = max(max_price, current_price)
+    max_diff = min(max_diff, current_price - max_price)
+
+# Write an answer using print
+# To debug: print("Debug messages...", file=sys.stderr)
+
+print(max_diff)
