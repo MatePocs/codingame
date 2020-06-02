@@ -10,8 +10,9 @@ numerals = []
 
 number_1_code = []
 number_2_code = []
-# similar structure, list of h element, but each of these is only
-# l length
+# similar structure,
+# but each of them has a fix l length because it's one number in a row
+# but can be longer than h height if it represents more numbers
 
 l, h = [int(i) for i in input().split()]
 for i in range(h):
@@ -45,6 +46,7 @@ def find_number(number_code):
     list of h elements, each element is a string
     length is l
     loops through 20 elements of numerals, checks if all the lines match
+    returns an integer between 0 and 19
     """
     number = 0
     for i in range(20):
@@ -53,8 +55,37 @@ def find_number(number_code):
             break
     return number
 
-number_1 = find_number(number_1_code)
-number_2 = find_number(number_2_code)
+def convert_code_to_number_list(number_code):
+    """
+    takes in a number of blocks
+    converts it to a list in which first number is the highest powered of 20
+    this would be the number represented at the top of the code block
+    """
+    result = []
+    number_of_numbers = int(len(number_code) / h)
+    for i in range(number_of_numbers):
+        current_number_code = []
+        for j in range(h):
+            current_row = number_code[i * h + j]
+            current_number_code.append(current_row)
+        current_number = find_number(current_number_code)
+        result.append(current_number)
+    return result
+
+def convert_number_list_to_base_10_number(number_list):
+    """
+    takes in a list of numbers, length determines what the highest power of 20 is
+    """
+    highest_power = len(number_list) - 1
+    result = 0
+    for i in range(0, highest_power+1):
+        current_item = number_list[i] * 20 ** (highest_power - i)
+        result += current_item
+    return result
+
+
+number_1 = convert_number_list_to_base_10_number(convert_code_to_number_list(number_1_code))
+number_2 = convert_number_list_to_base_10_number(convert_code_to_number_list(number_2_code))
 
 print(str(number_1), file = sys.stderr)
 print(operation, file = sys.stderr)
@@ -82,12 +113,15 @@ def convert_number_to_base_20(number):
 
     result = []
     current_residual = number
-    highest_power = round(math.log(number, 20)) // 1
+    if number == 0:
+        result.append(0)
+    else:
+        highest_power = int(math.log(number, 20) // 1)
 
-    for i in range(highest_power, -1, -1):
-        current_factor = int((current_residual / 20 ** i) // 1)
-        current_residual = current_residual - current_factor * 20 ** i
-        result.append(current_factor)
+        for i in range(highest_power, -1, -1):
+            current_factor = int((current_residual / 20 ** i) // 1)
+            current_residual = current_residual - current_factor * 20 ** i
+            result.append(current_factor)
 
     return result
 
