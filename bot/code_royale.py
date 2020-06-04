@@ -49,6 +49,8 @@ class Site:
         my_archer_barracks = {}
         neutral_sites = {}
         opponent_sites = {}
+        opponent_knight_barracks = {}
+        opponent_archer_barracks = {}
 
         for site_id in sites:
             site = sites[site_id]
@@ -61,10 +63,16 @@ class Site:
                         my_archer_barracks[site_id] = site
             elif site.owner == 1:
                 opponent_sites[site_id] = site
+                if site.structure_type == 2:
+                    if site.param_2 == 0:
+                        opponent_knight_barracks[site_id] = site
+                    elif site.param_2 == 1:
+                        opponent_archer_barracks[site_id] = site
             elif site.owner == -1:
                 neutral_sites[site_id] = site
 
-        return my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, opponent_sites
+        return my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks
 
     @staticmethod
     def calculate_distance(object1, object2):
@@ -122,13 +130,17 @@ class GameState:
     """
 
     def __init__(
-        self, my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, opponent_sites, my_queen, opponent_queen, \
+        self, my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, \
+        my_queen, opponent_queen, \
         my_knights, my_archers, opponent_knights, opponent_archers, gold):
         self.my_sites = my_sites
         self.my_knight_barracks = my_knight_barracks
         self.my_archer_barracks = my_archer_barracks
         self.neutral_sites = neutral_sites
         self.opponent_sites = opponent_sites
+        self.opponent_knight_barracks = opponent_knight_barracks
+        self.opponent_archer_barracks = opponent_archer_barracks
         self.my_queen = my_queen
         self.opponent_queen = opponent_queen
         self.my_knights = my_knights 
@@ -146,7 +158,10 @@ class Agent:
     our agent that determines our steps for the round
     """
     def __init__(self):
-        pass
+        self.game_turn = 0
+
+    def increase_game_turn(self):
+        self.game_turn += 1
 
     def determine_move(self,game_state):
         """
@@ -164,8 +179,53 @@ class Agent:
         returns one string, command for the queen
         """
 
-        # check if queen is touching a neutral site
 
+        # first of all: if situation is bad, run with queen
+        if self.should_queen_escape(game_state):
+            command = self.determine_escape_move(game_state)
+        else:
+            command = self.determine_expansion_move(game_state)
+
+        return command
+
+    def should_queen_escape(self, game_state):
+        """
+        determines if we should push for expansion or escape with queen
+        """
+
+        # for now: escape if queen's health is below 40
+
+        should_escape = False
+
+        if game_state.my_queen.health < 40:
+            should_escape = True
+
+        return should_escape
+
+    def determine_escape_move(self, game_state):
+        """
+        determines where the queen should escape
+        """
+
+        # for now, we check opponent queen, and move in opposite corner
+        if game_state.opponent_queen.x > 1920 / 2: 
+            destination_x = 0
+        else:
+            destination_x = 1920
+        if game_state.opponent_queen.y > 1000 / 2: 
+            destination_y = 0
+        else:
+            destination_y = 1000
+
+        command = "MOVE " + str(destination_x) + " " + str(destination_y)
+
+        return command
+
+    def determine_expansion_move(self, game_state):
+        """
+        determines where the queen should move to build new buildings
+        """
+        # check if queen is touching a neutral site
         if game_state.my_queen.touched_site != -1 and game_state.my_queen.touched_site in game_state.neutral_sites:
         # if yes: build there
             command = self.build_at_queen_location(game_state)
@@ -174,8 +234,8 @@ class Agent:
             closest_site = self.get_closest_site_to_queen(game_state.neutral_sites, game_state.my_queen)
             command = "MOVE " + str(closest_site.x) + " " + str(closest_site.y)
 
-
         return command
+
 
     def build_at_queen_location(self, game_state):
         """
@@ -200,20 +260,24 @@ class Agent:
 
         # for now, we are training one unit per round (should be OK, considering we only get 10 gold per round)
 
+        # only strting thinking about it in round 10, and archers mostly
+
         # first, determine what type of unit we need to train
         # same approach as with building, first knights, then archers
 
-        if len(game_state.my_archer_barracks) < len(game_state.my_knight_barracks):
-            training_sites = game_state.my_archer_barracks
-            training_cost = archer_price
-        else:
-            training_sites = game_state.my_knight_barracks
-            training_cost = knight_price
+        if self.game_turn > 10: 
 
-        if game_state.gold > training_cost:
-            site = self.choose_site_to_train(game_state, training_sites)
-            if site is not None: 
-                command = command + " " + str(site.site_id)
+            if len(game_state.my_archers) < len(game_state.my_knights):
+                training_sites = game_state.my_archer_barracks
+                training_cost = archer_price
+            else:
+                training_sites = game_state.my_knight_barracks
+                training_cost = knight_price
+
+            if game_state.gold > training_cost:
+                site = self.choose_site_to_train(game_state, training_sites)
+                if site is not None: 
+                    command = command + " " + str(site.site_id)
 
 
         return command
@@ -296,7 +360,9 @@ while True:
         sites[site_id].update(structure_type, owner, param_1, param_2)
 
     # once we gathered sites, create three dictionaries 
-    my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, opponent_sites = Site.split_sites_by_owner(sites)
+    my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
+    opponent_sites, opponent_knight_barracks, opponent_archer_barracks  = \
+    Site.split_sites_by_owner(sites)
 
 # UNITS
 
@@ -319,7 +385,8 @@ while True:
     # and same way as with the sites, we are splitting units 
     my_knights, my_archers, opponent_knights, opponent_archers = Unit.split_units_by_owner_and_type(units)
 
-
+    # also, increase the game turn
+    agent.increase_game_turn()
 
 
 # **************
@@ -328,11 +395,8 @@ while True:
 
     game_state = GameState(
         my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
-        opponent_sites, my_queen, opponent_queen, my_knights, my_archers, opponent_knights, opponent_archers, gold)
-    
-    if debugging_mode: 
-        print(my_knight_barracks.keys(), file = sys.stderr)
-        print(my_archer_barracks.keys(), file = sys.stderr)
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, \
+        my_queen, opponent_queen, my_knights, my_archers, opponent_knights, opponent_archers, gold)
 
     commands = agent.determine_move(game_state)
 
