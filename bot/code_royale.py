@@ -7,6 +7,7 @@ debugging_mode = True
 
 archer_price = 100
 knight_price = 80
+giant_price = 140
 max_distance = (1920 ** 2 + 1000 ** 2) ** 0.5
 # to be used for minimum distance calculations
 
@@ -47,32 +48,51 @@ class Site:
         my_sites = {}
         my_knight_barracks = {}
         my_archer_barracks = {}
+        my_giant_barracks = {}
+        my_towers = {}
+        my_mines = {}
         neutral_sites = {}
         opponent_sites = {}
         opponent_knight_barracks = {}
         opponent_archer_barracks = {}
+        opponent_giant_barracks = {}
+        opponent_towers = {}
+        opponent_mines = {}
 
         for site_id in sites:
             site = sites[site_id]
             if site.owner == 0:
                 my_sites[site_id] = site
-                if site.structure_type == 2:
+                if site.structure_type == 0:
+                    my_mines[site_id] = site
+                elif site.structure_type == 1:
+                    my_towers[site_id] = site
+                elif site.structure_type == 2:
                     if site.param_2 == 0:
                         my_knight_barracks[site_id] = site
                     elif site.param_2 == 1:
                         my_archer_barracks[site_id] = site
+                    elif site.param_2 == 2:
+                        my_giant_barracks[site_id] = site
             elif site.owner == 1:
                 opponent_sites[site_id] = site
-                if site.structure_type == 2:
+                if site.structure_type == 0:
+                    opponent_mines[site_id] = site
+                elif site.structure_type == 1:
+                    opponent_towers[site_id] = site
+                elif site.structure_type == 2:
                     if site.param_2 == 0:
                         opponent_knight_barracks[site_id] = site
                     elif site.param_2 == 1:
                         opponent_archer_barracks[site_id] = site
+                    elif site.param_2 == 2:
+                        opponent_giant_barracks[site_id] = site
             elif site.owner == -1:
                 neutral_sites[site_id] = site
 
-        return my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
-        opponent_sites, opponent_knight_barracks, opponent_archer_barracks
+        return my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
+        neutral_sites, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_mines
 
     @staticmethod
     def calculate_distance(object1, object2):
@@ -88,15 +108,16 @@ class Unit:
     contains information about the unit
     """
 
-    def __init__(self):
-        self.touched_site = -1
-
-    def update(self, x, y, owner, unit_type, health):
+    def __init__(self, x, y, owner, unit_type, health):
         self.x = x
         self.y = y
-        self.health = health
         self.owner = owner
         self.unit_type = unit_type
+        self.health = health
+        
+    def update(self, touched_site):
+        self.touched_site = touched_site
+
 
     @staticmethod
     def split_units_by_owner_and_type(units):
@@ -104,25 +125,34 @@ class Unit:
         takes a list of units, and sorts them into four lists
         """
         my_knights = []
-        my_archers = [] 
+        my_archers = []
+        my_giants = []
         opponent_knights = []
         opponent_archers = []
+        opponent_giants = []
 
         for unit in units:
             if unit.owner == 0:
-                if unit.unit_type == 0:
+                if unit.unit_type == -1:
+                    my_queen = unit
+                elif unit.unit_type == 0:
                     my_knights.append(unit)
                 elif unit.unit_type == 1:
                     my_archers.append(unit)
+                elif unit.unit_type == 2:
+                    my_giants.append(unit)
+                
             elif unit.owner == 1:
+                if unit.unit_type == -1:
+                    opponent_queen = unit
                 if unit.unit_type == 0:
                     opponent_knights.append(unit)
                 elif unit.unit_type == 1:
                     opponent_archers.append(unit)
+                elif unit.unit_type == 2:
+                    opponent_giants.append(unit)
 
-        return my_knights, my_archers, opponent_knights, opponent_archers
-
-        
+        return my_queen, opponent_queen, my_knights, my_archers, my_giants, opponent_knights, opponent_archers, opponent_giants
 
 class GameState:
     """
@@ -130,23 +160,34 @@ class GameState:
     """
 
     def __init__(
-        self, my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
-        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, \
+        self, my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
+        neutral_sites, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_towers, \
         my_queen, opponent_queen, \
-        my_knights, my_archers, opponent_knights, opponent_archers, gold):
+        my_knights, my_archers, my_giants, \
+        opponent_knights, opponent_archers, opponent_giants, \
+        gold):
         self.my_sites = my_sites
         self.my_knight_barracks = my_knight_barracks
         self.my_archer_barracks = my_archer_barracks
+        self.my_giant_barracks = my_giant_barracks
+        self.my_towers = my_towers
+        self.my_mines = my_mines
         self.neutral_sites = neutral_sites
         self.opponent_sites = opponent_sites
         self.opponent_knight_barracks = opponent_knight_barracks
         self.opponent_archer_barracks = opponent_archer_barracks
+        self.opponent_giant_barracks = opponent_giant_barracks
+        self.opponent_towers = opponent_towers
+        self.opponent_mines = opponent_mines
         self.my_queen = my_queen
         self.opponent_queen = opponent_queen
         self.my_knights = my_knights 
         self.my_archers = my_archers 
+        self.my_giants = my_giants
         self.opponent_knights = opponent_knights 
         self.opponent_archers = opponent_archers
+        self.opponent_giants = opponent_giants
 
         self.gold = gold
 
@@ -231,7 +272,13 @@ class Agent:
             command = self.build_at_queen_location(game_state)
         else:
         # if not: select the neutral site that is nearest to queen
-            closest_site = self.get_closest_site_to_queen(game_state.neutral_sites, game_state.my_queen)
+            closest_site = self.get_closest_site_to_queen(
+                sites_list = [game_state.neutral_sites, game_state.opponent_knight_barracks, opponent_archer_barracks], \
+                queen = game_state.my_queen)
+            if closest_site is None:
+                # if we are still empty, move to current position
+                closest_site = game_state.my_queen
+
             command = "MOVE " + str(closest_site.x) + " " + str(closest_site.y)
 
         return command
@@ -241,21 +288,57 @@ class Agent:
         """
         builds something at the queen's current location
         """
-
-        # first: determine if we have more archer barracks or knight barracks
-        if len(game_state.my_archer_barracks) < len(game_state.my_knight_barracks):
-            building_type = "BARRACKS-ARCHER"
-        else:
-            building_type = "BARRACKS-KNIGHT"
+        building_type = self.next_in_predetermined_building_list(game_state)
 
         command = "BUILD " + str(game_state.my_queen.touched_site) + " " + building_type
 
         return command
 
+    def next_in_predetermined_building_list(self, game_state):
+        """
+        builds by a pre-determined list
+        we have a list of building types
+        one by one checks if we have the required buildings up until that point
+        the first time when we don't, that is the building type to build
+        at the end of the list, keeps building last building
+        """
+
+        building_list = self.determine_building_list(game_state)
+
+        current_buildings = {}
+        current_buildings["BARRACKS-ARCHER"] = len(game_state.my_archer_barracks)
+        current_buildings["BARRACKS-KNIGHT"] = len(game_state.my_knight_barracks)
+        current_buildings["BARRACKS-GIANT"] = len(game_state.my_giant_barracks)
+        current_buildings["TOWER"] = len(game_state.my_towers)
+        current_buildings["MINE"] = len(game_state.my_towers)
+
+        for i in range(len(building_list)):
+            building_type = building_list[i]
+            if current_buildings[building_type] > 0:
+                current_buildings[building_type] -= 1
+            else:
+                break
+
+        return building_type
+
+
+    def determine_building_list(self, game_state):
+        """
+        determines what kind of buildings we should have
+        """
+        # for now: fix
+
+        building_list = \
+        ["BARRACKS-ARCHER", "BARRACKS-KNIGHT", "MINE", "MINE", "MINE", "TOWER", "TOWER", "TOWER",\
+        "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "TOWER", "TOWER", "MINE"]
+
+        return building_list
+
     def determine_train_move(self, game_state):
         """
         returns one string, command for training
         """
+
         command = "TRAIN"
 
         # for now, we are training one unit per round (should be OK, considering we only get 10 gold per round)
@@ -265,9 +348,12 @@ class Agent:
         # first, determine what type of unit we need to train
         # same approach as with building, first knights, then archers
 
-        if self.game_turn > 10: 
+        if self.game_turn > 3: 
 
-            if len(game_state.my_archers) < len(game_state.my_knights):
+            # print(len(game_state.my_archers), file = sys.stderr)
+            # print(len(game_state.my_knights), file = sys.stderr)
+
+            if len(game_state.my_archers) <= len(game_state.my_knights):
                 training_sites = game_state.my_archer_barracks
                 training_cost = archer_price
             else:
@@ -281,7 +367,6 @@ class Agent:
 
 
         return command
-
 
     def choose_site_to_train(self, game_state, training_sites):
         """
@@ -305,7 +390,7 @@ class Agent:
 
         return chosen_site
 
-    def get_closest_site_to_queen(self, sites, queen):
+    def get_closest_site_to_queen(self, sites_list, queen):
         """
         from the list of sites, returns the one that is
         nearest to the queen
@@ -316,11 +401,13 @@ class Agent:
         min_distance = max_distance
         closest_site = None
 
-        for site in sites.values():
-            current_distance = Site.calculate_distance(site, queen)
-            if current_distance < min_distance:
-                min_distance = current_distance
-                closest_site = site
+        for sites in sites_list:
+
+            for site in sites.values():
+                current_distance = Site.calculate_distance(site, queen)
+                if current_distance < min_distance:
+                    min_distance = current_distance
+                    closest_site = site
 
         return closest_site
 
@@ -330,8 +417,6 @@ class Agent:
 # **************
 
 sites = {}
-my_queen = Unit()
-opponent_queen = Unit()
 agent = Agent()
 
 units = []
@@ -350,7 +435,6 @@ while True:
 # **************
 
     gold, touched_site = [int(i) for i in input().split()]
-    my_queen.touched_site = touched_site
 
 # SITES
 
@@ -360,8 +444,9 @@ while True:
         sites[site_id].update(structure_type, owner, param_1, param_2)
 
     # once we gathered sites, create three dictionaries 
-    my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
-    opponent_sites, opponent_knight_barracks, opponent_archer_barracks  = \
+    my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
+    neutral_sites, \
+    opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_mines  = \
     Site.split_sites_by_owner(sites)
 
 # UNITS
@@ -370,20 +455,13 @@ while True:
     num_units = int(input())
     for i in range(num_units):
         x, y, owner, unit_type, health = [int(j) for j in input().split()]
-        # we are handling queens differently, keeping them in a global variable
-        if unit_type == -1:
-                if owner == 0:
-                    my_queen.update(x, y, unit_type, owner, health)
-                elif owner == 1: 
-                    opponent_queen.update(x, y, unit_type, owner, health)
-        else:
-            # if they are not queen, keep units in the units list to be split later
-            current_unit = Unit()
-            current_unit.update(x, y, unit_type, owner, health)
-            units.append(current_unit)
+        current_unit = Unit(x, y, owner, unit_type, health)
+        units.append(current_unit)
 
     # and same way as with the sites, we are splitting units 
-    my_knights, my_archers, opponent_knights, opponent_archers = Unit.split_units_by_owner_and_type(units)
+    my_queen, opponent_queen, my_knights, my_archers, my_giants, opponent_knights, opponent_archers, opponent_giants = Unit.split_units_by_owner_and_type(units)
+
+    my_queen.update(touched_site)
 
     # also, increase the game turn
     agent.increase_game_turn()
@@ -394,9 +472,13 @@ while True:
 # **************
 
     game_state = GameState(
-        my_sites, my_knight_barracks, my_archer_barracks, neutral_sites, \
-        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, \
-        my_queen, opponent_queen, my_knights, my_archers, opponent_knights, opponent_archers, gold)
+        my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
+        neutral_sites, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_mines, \
+        my_queen, opponent_queen, \
+        my_knights, my_archers, my_giants, \
+        opponent_knights, opponent_archers, opponent_giants,  \
+        gold)
 
     commands = agent.determine_move(game_state)
 
