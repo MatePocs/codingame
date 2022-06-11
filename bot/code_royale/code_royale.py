@@ -333,10 +333,9 @@ class Agent:
         current_buildings["BARRACKS-KNIGHT"] = len (game_state.my_knight_barracks)
         current_buildings["BARRACKS-GIANT"] = len (game_state.my_giant_barracks)
         current_buildings["TOWER"] = len (game_state.my_towers)
-        current_buildings["MINE"] = len (game_state.my_towers)
+        current_buildings["MINE"] = len (game_state.my_mines)
 
-        for i in range (len (building_list)):
-            building_type = building_list[i]
+        for building_type in building_list:
             if current_buildings[building_type] > 0:
                 current_buildings[building_type] -= 1
             else:
@@ -351,7 +350,7 @@ class Agent:
         # for now: fix
 
         building_list = \
-            ["BARRACKS-ARCHER", "BARRACKS-KNIGHT", "MINE", "MINE", "MINE", "TOWER", "TOWER", "TOWER", \
+            ["MINE", "MINE", "MINE", "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "TOWER", "TOWER", "TOWER", \
              "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "TOWER", "TOWER", "MINE"]
 
         return building_list
@@ -365,17 +364,12 @@ class Agent:
 
         # for now, we are training one unit per round (should be OK, considering we only get 10 gold per round)
 
-        # only strting thinking about it in round 10, and archers mostly
-
         # first, determine what type of unit we need to train
         # same approach as with building, first knights, then archers
 
         if self.game_turn > 3:
 
-            # print(len(game_state.my_archers), file = sys.stderr)
-            # print(len(game_state.my_knights), file = sys.stderr)
-
-            if len (game_state.my_archers) <= len (game_state.my_knights):
+            if len (game_state.my_archers) < len (game_state.my_knights):
                 training_sites = game_state.my_archer_barracks
                 training_cost = archer_price
             else:
@@ -396,7 +390,7 @@ class Agent:
 
         chosen_site = None
 
-        # for now: going to pick that site that is available and closest to 
+        # for now: going to pick that site that is available and closest to opponent queen
 
         min_distance = max_distance
 
