@@ -27,9 +27,13 @@ class Site:
         self.y = y
         self.radius = radius
 
-    def update(self, structure_type=None, owner=None, param_1=None, param_2=None):
+    def update(self, structure_type=None, gold_remaining = None, max_mine_size = None, owner=None, param_1=None, param_2=None):
         if structure_type is not None:
             self.structure_type = structure_type
+        if gold_remaining is not None:
+            self.gold_remaining = gold_remaining
+        if owner is not None:
+            self.max_mine_size = max_mine_size
         if owner is not None:
             self.owner = owner
         if param_1 is not None:
@@ -118,7 +122,7 @@ class Unit:
         self.touched_site = touched_site
 
     def calc_distance_from_my_queen(self, my_queen):
-    	self.distance_from_my_queen = Site.calculate_distance(self, my_queen)
+        self.distance_from_my_queen = Site.calculate_distance(self, my_queen)
 
     @staticmethod
     def split_units_by_owner_and_type(units):
@@ -204,6 +208,7 @@ class Agent:
     def __init__(self):
         self.game_turn = 0
         self.queen_distance_danger = 100
+        self.mine_limit = 3
 
     def increase_game_turn(self):
         self.game_turn += 1
@@ -231,11 +236,11 @@ class Agent:
         command = None
 
         if not(closest_knight is None):
-        	if closest_knight.distance_from_my_queen < 500:
-        		command = self.determine_escape_move(game_state, closest_knight)
+            if closest_knight.distance_from_my_queen < self.queen_distance_danger:
+                command = self.determine_escape_move(game_state, closest_knight)
         
         if command is None:
-        	command = self.determine_expansion_move(game_state)
+            command = self.determine_expansion_move(game_state)
 
         return command
 
@@ -253,17 +258,17 @@ class Agent:
         return should_escape
 
     def get_closest_opponent_knight_to_queen(self, game_state):
-    	"""
-    	calculates the closest knight to the queen
-    	"""
-    	closest_knight = None
-    	closest_distance = max_distance
-    	for opponent_knight in game_state.opponent_knights:
-    		if opponent_knight.distance_from_my_queen < closest_distance:
-    			closest_distance = opponent_knight.distance_from_my_queen
-    			closest_knight = opponent_knight
+        """
+        calculates the closest knight to the queen
+        """
+        closest_knight = None
+        closest_distance = max_distance
+        for opponent_knight in game_state.opponent_knights:
+            if opponent_knight.distance_from_my_queen < closest_distance:
+                closest_distance = opponent_knight.distance_from_my_queen
+                closest_knight = opponent_knight
 
-    	return closest_knight
+        return closest_knight
 
 
 
@@ -290,14 +295,24 @@ class Agent:
         """
         determines where the queen should move to build new buildings
         """
-        # check if queen is touching a neutral site
-        if game_state.my_queen.touched_site != -1 and game_state.my_queen.touched_site in game_state.neutral_sites:
-            # if yes: build there
-            command = self.build_at_queen_location (game_state)
-        else:
+        
+        command = None
+
+        # check if queen is touching a site
+        if game_state.my_queen.touched_site != -1:
+            # if it's a neutral site, build there accordingly
+            if game_state.my_queen.touched_site in game_state.neutral_sites:
+                command = self.build_at_queen_location(game_state, "automatic")
+            # otherwise, if queen is touching my mine, and its level is under required, upgrade
+            elif game_state.my_queen.touched_site in game_state.my_mines:
+                # only build if we can, i.e. we have not reached the limit yet
+                if game_state.my_mines[game_state.my_queen.touched_site].param_1 < game_state.my_mines[game_state.my_queen.touched_site].max_mine_size:
+                    command = self.build_at_queen_location(game_state, "mine")
+        
+        if command is None:
             # if not: select the neutral site that is nearest to queen
             closest_site = self.get_closest_site_to_queen (
-                sites_list=[game_state.neutral_sites, game_state.opponent_knight_barracks, opponent_archer_barracks], \
+                sites_list=[game_state.neutral_sites, game_state.opponent_knight_barracks, game_state.opponent_archer_barracks], \
                 queen=game_state.my_queen)
             if closest_site is None:
                 # if we are still empty, move to current position
@@ -305,17 +320,21 @@ class Agent:
 
             command = "MOVE " + str (closest_site.x) + " " + str (closest_site.y)
 
-        return command
-
-    def build_at_queen_location(self, game_state):
+        return(command)
+        
+    def build_at_queen_location(self, game_state, building_type_decision):
         """
         builds something at the queen's current location
         """
-        building_type = self.next_in_predetermined_building_list (game_state)
-
+        if building_type_decision == "automatic":
+            building_type = self.next_in_predetermined_building_list (game_state)
+        elif building_type_decision == "mine":
+            building_type = "MINE"
+            
         command = "BUILD " + str (game_state.my_queen.touched_site) + " " + building_type
 
         return command
+
 
     def next_in_predetermined_building_list(self, game_state):
         """
@@ -350,7 +369,7 @@ class Agent:
         # for now: fix
 
         building_list = \
-            ["MINE", "MINE", "MINE", "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "TOWER", "TOWER", "TOWER", \
+            ["MINE", "MINE", "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "MINE","TOWER", "MINE", "TOWER", \
              "BARRACKS-ARCHER", "BARRACKS-KNIGHT", "TOWER", "TOWER", "MINE"]
 
         return building_list
@@ -362,14 +381,12 @@ class Agent:
 
         command = "TRAIN"
 
-        # for now, we are training one unit per round (should be OK, considering we only get 10 gold per round)
-
-        # first, determine what type of unit we need to train
-        # same approach as with building, first knights, then archers
+        # for now, we are training one unit per round 
 
         if self.game_turn > 3:
 
-            if len (game_state.my_archers) < len (game_state.my_knights):
+            if (len (game_state.my_archers) < len (game_state.my_knights) or \
+                len(game_state.my_knight_barracks) == 0) and len(opponent_knights) > 0:
                 training_sites = game_state.my_archer_barracks
                 training_cost = archer_price
             else:
@@ -450,9 +467,9 @@ while True:
     # SITES
 
     for i in range (num_sites):
-        site_id, ignore_1, ignore_2, structure_type, owner, param_1, param_2 = [int (j) for j in input ().split ()]
+        site_id, gold_remaining, max_mine_size, structure_type, owner, param_1, param_2 = [int (j) for j in input ().split ()]
         # updating site with new information
-        sites[site_id].update (structure_type, owner, param_1, param_2)
+        sites[site_id].update (structure_type, gold_remaining, max_mine_size, owner, param_1, param_2)
 
     # once we gathered sites, create three dictionaries 
     my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
@@ -477,7 +494,7 @@ while True:
 
     # for opponent knights, calculate how far they are from my queen
     for opponent_knight in opponent_knights:
-    	opponent_knight.calc_distance_from_my_queen(my_queen)
+        opponent_knight.calc_distance_from_my_queen(my_queen)
 
     # also, increase the game turn
     agent.increase_game_turn ()
