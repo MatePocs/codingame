@@ -162,7 +162,7 @@ class GameState:
     def __init__(
         self, my_sites, my_knight_barracks, my_archer_barracks, my_giant_barracks, my_towers, my_mines, \
         neutral_sites, \
-        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_towers, \
+        opponent_sites, opponent_knight_barracks, opponent_archer_barracks, opponent_giant_barracks, opponent_towers, opponent_mines, \
         my_queen, opponent_queen, \
         my_knights, my_archers, my_giants, \
         opponent_knights, opponent_archers, opponent_giants, \
