@@ -1,1 +1,3 @@
-Saving code I made for bot competitions: https://www.codingame.com/ide/puzzle/ghost-in-the-cell
+# CodinGame Entries
+
+Code for various puzzles and bot programming on CodinGame. 
