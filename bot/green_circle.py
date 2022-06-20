@@ -2,6 +2,7 @@ import sys
 import math
 from collections import namedtuple
 from enum import Enum
+import copy
 
 class CardType(Enum):
 	TRAINING = 0
@@ -15,6 +16,8 @@ class CardType(Enum):
 	BONUS = 8
 	TECHNICAL_DEBT = 9
 
+skill_card_types_number = 8
+
 class GameState:
 
 	# used to store all relevant game info in one object
@@ -26,6 +29,13 @@ class GameState:
 		self.player_info = player_info
 		self.card_locations = card_locations
 		self.possible_moves = possible_moves
+
+	def update_card_location(self, card_location_key, card_index, change_amount):
+
+		# updates a piece of card count
+		# e.g. for the projection, we increase certain card by one
+
+		self.card_locations[card_location_key][card_index] += change_amount
 
 class Agent:
 
@@ -42,9 +52,27 @@ class Agent:
 
 		# In the first league: RANDOM | MOVE <zoneId> | RELEASE <applicationId> | WAIT; In later leagues: | GIVE <cardType> | THROW <cardType> | TRAINING | CODING | DAILY_ROUTINE | TASK_PRIORITIZATION <cardTypeToThrow> <cardTypeToTake> | ARCHITECTURE_STUDY | CONTINUOUS_DELIVERY <cardTypeToAutomate> | CODE_REVIEW | REFACTORING;
 		if game_state.game_phase == "MOVE":
-			# Write your code here to move your player
-			# You must move from your desk
-			command = f'MOVE {(player_location + 1) % 8}'
+			
+			projected_states_after_moves = self.get_projected_states_after_moves(game_state)
+
+			print(projected_states_after_moves, file = sys.stderr)
+
+			# gonna do it weird for now, we select the move goal where it is max but not current
+
+			location_to_move_to = None
+
+			current_max = 0
+			for i in range (skill_card_types_number):
+				if i != game_state.player_info['my_player']['location']:
+					if projected_states_after_moves[i] > current_max:
+						location_to_move_to = i
+						curent_max = projected_states_after_moves[i]
+
+			if location_to_move_to is None: 
+				command = "RANDOM"
+			else:
+				command = f'MOVE {location_to_move_to}'
+
 		elif game_state.game_phase == "GIVE_CARD":
 			# Starting from league 2, you must give a card to the opponent if you move close to them.
 			# Write your code here to give a card
@@ -66,7 +94,7 @@ class Agent:
 			
 			valid_applications = self.assess_applications_availability(game_state)
 			if len(valid_applications) == 0:
-				command = "WAIT"
+				command = "RANDOM"
 			else:
 				print(valid_applications, file  = sys.stderr)
 				command = f"RELEASE {valid_applications[0]}"
@@ -74,6 +102,30 @@ class Agent:
 			command = "RANDOM"
 
 		return command
+
+	def get_projected_states_after_moves(self, game_state):
+
+		# loops through potential moves 
+		# returns something
+		# for now, that something is the length of valid applications assuming we go to the location and get a card there
+
+		projected_states_after_moves = []
+
+		for i in range(8):
+			game_state.update_card_location("HAND", i, +1)
+			# game_state.card_locations["HAND"][i] += 1
+			valid_applications = self.assess_applications_availability(game_state)
+			projected_states_after_moves.append(len(valid_applications))
+
+			# print(f"moving to position {i} will result in these valid applications: {valid_applications}", file = sys.stderr)
+			# print(f"that is because we have this projected hand: {game_state.card_locations['HAND']}", file = sys.stderr)
+
+			game_state.update_card_location("HAND", i, -1)
+			# game_state.card_locations["HAND"][i] -= 1
+
+
+		return projected_states_after_moves
+
 
 	def assess_applications_availability(self, game_state):
 
@@ -84,7 +136,7 @@ class Agent:
 		valid_applications = []
 
 		for application in game_state.applications:
-			if self.assess_application_availiability(application[1], game_state.card_locations["HAND"]) == True:
+			if self.assess_application_availiability(application[1][:], game_state.card_locations["HAND"]) == True: # FFS needs a [:] here to copy
 				valid_applications.append(application[0])
 
 		return valid_applications
@@ -97,6 +149,8 @@ class Agent:
 
 		application_can_be_done = False
 
+		# print(f"we are checking application requirements: {application_requirements} against card counts: {card_counts}", file = sys.stderr)
+
 		# first, loop through requirements, decrease with skill cards
 		for i in range(len(application_requirements)): # should be 8, but who knows
 			application_requirements[i] -= card_counts[i] * 2
@@ -105,6 +159,8 @@ class Agent:
 		# second, check if we have enough bonus skills to cover them
 		if sum(application_requirements) - card_counts[CardType.BONUS.value] <= 0:
 			application_can_be_done = True
+
+		# print(f"and the result is: {application_can_be_done}", file = sys.stderr)
 
 		return application_can_be_done
 
