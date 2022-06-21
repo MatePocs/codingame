@@ -84,17 +84,22 @@ class Agent:
 			# RANDOM | THROW cardTypeId
 			command = "RANDOM"
 		elif game_state.game_phase == "PLAY_CARD":
-			# Starting from league 2, you can play some cards from your hand.
-			# Write your code here to play a card
 			# WAIT | RANDOM | TRAINING | CODING | DAILY_ROUTINE | TASK_PRIORITIZATION <cardTypeIdToThrow> <cardTypeIdToTake> | ARCHITECTURE_STUDY | CONTINUOUS_INTEGRATION <cardTypeIdToAutomate> | CODE_REVIEW | REFACTORING
-			command = "RANDOM"
+
+			# easy approach for now - if we have cards from a list, do it
+
+			command = self.get_play_card_command(game_state)
+			
 		elif game_state.game_phase == "RELEASE":
 
 			# simple approach for now: we release anything that we can do without shoddy skills
 			
 			valid_applications = self.assess_applications_availability(game_state)
 			if len(valid_applications) == 0:
-				command = "RANDOM"
+				if game_state.player_info['my_player']['score'] > 1:
+					command = "RANDOM"
+				else:
+					command = "WAIT"
 			else:
 				print(valid_applications, file  = sys.stderr)
 				command = f"RELEASE {valid_applications[0]}"
@@ -163,6 +168,23 @@ class Agent:
 		# print(f"and the result is: {application_can_be_done}", file = sys.stderr)
 
 		return application_can_be_done
+
+	def get_play_card_command(self, game_state):
+
+		# decides if we should play a card
+		# for now, I'll simply make a list, if we have any of those, play those cards, otherwise, WAIT
+
+		command = "WAIT"
+
+		if game_state.card_locations["HAND"][CardType.TRAINING.value] > 0:
+			command = "TRAINING"
+		elif game_state.card_locations["HAND"][CardType.CODING.value] > 0:
+			command = "CODING"
+		elif game_state.card_locations["HAND"][CardType.REFACTORING.value] > 0:
+			command = "REFACTORING"
+
+		return command
+
 
 
 
